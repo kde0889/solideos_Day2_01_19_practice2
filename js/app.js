@@ -357,7 +357,10 @@ async function searchTransportation(formData) {
 
     // Parse departure date
     const depDate = new Date(departureDate);
-    const timeStr = depDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    // Format time as HH:MM (24-hour format)
+    const hours = String(depDate.getHours()).padStart(2, '0');
+    const minutes = String(depDate.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
 
     // Calculate base distance for pricing
     const originCity = koreanCities.find(c => c.name === departure);

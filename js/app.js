@@ -37,10 +37,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    // Set default departure date to now
+    // Set default departure date to today
     const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    document.getElementById('departureDate').value = now.toISOString().slice(0, 16);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    document.getElementById('departureDate').value = `${year}-${month}-${day}`;
 
     // Initialize event listeners
     initializeEventListeners();
@@ -289,11 +291,26 @@ async function handleSearch(e) {
     e.preventDefault();
 
     // Collect form data
+    const date = document.getElementById('departureDate').value;
+    const hour = parseInt(document.getElementById('departureHour').value);
+    const minute = parseInt(document.getElementById('departureMinute').value);
+    const period = document.getElementById('departurePeriod').value;
+
+    // Convert 12-hour to 24-hour format
+    let hour24 = hour;
+    if (period === 'PM' && hour !== 12) {
+        hour24 = hour + 12;
+    } else if (period === 'AM' && hour === 12) {
+        hour24 = 0;
+    }
+
+    // Create datetime string
+    const departureDateTime = `${date}T${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
     const formData = {
         departure: document.getElementById('departure').value,
         arrival: document.getElementById('arrival').value,
-        departureDate: document.getElementById('departureDate').value,
-        arrivalDate: document.getElementById('arrivalDate').value,
+        departureDate: departureDateTime,
         passengers: parseInt(document.getElementById('passengers').value),
         transports: Array.from(document.querySelectorAll('input[name="transport"]:checked'))
             .map(cb => cb.value)

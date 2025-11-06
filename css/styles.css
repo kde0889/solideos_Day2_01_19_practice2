@@ -286,6 +286,51 @@ body {
     color: var(--gray);
 }
 
+/* Time Picker */
+.time-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--white);
+    padding: 0.5rem;
+    border: 2px solid var(--gray-light);
+    border-radius: 12px;
+    transition: all 0.3s;
+}
+
+.time-picker:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.time-picker select {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--gray-light);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    font-weight: 600;
+    background: var(--gray-lighter);
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.time-picker select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: var(--white);
+}
+
+.time-picker select:hover {
+    background: var(--white);
+}
+
+.time-separator {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--dark);
+}
+
 /* Autocomplete Dropdown */
 .autocomplete-dropdown {
     position: absolute;
@@ -827,6 +872,20 @@ body {
 
     .swap-btn {
         display: none;
+    }
+
+    .time-picker {
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+
+    .time-picker select {
+        font-size: 0.9rem;
+        padding: 0.3rem 0.6rem;
+    }
+
+    .time-separator {
+        font-size: 1.1rem;
     }
 
     .search-card,

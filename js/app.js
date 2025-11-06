@@ -1,0 +1,749 @@
+/* ===========================
+   TravelHub - Smart Travel Planner
+   Premium Travel Web Application
+   =========================== */
+
+// Global Variables
+let map;
+let directionsService;
+let directionsRenderer;
+let searchData = {};
+let autocompleteServices = {};
+
+// Korean Cities Database with Coordinates
+const koreanCities = [
+    { name: '서울', lat: 37.5665, lng: 126.9780, english: 'Seoul' },
+    { name: '부산', lat: 35.1796, lng: 129.0756, english: 'Busan' },
+    { name: '대구', lat: 35.8714, lng: 128.6014, english: 'Daegu' },
+    { name: '인천', lat: 37.4563, lng: 126.7052, english: 'Incheon' },
+    { name: '광주', lat: 35.1595, lng: 126.8526, english: 'Gwangju' },
+    { name: '대전', lat: 36.3504, lng: 127.3845, english: 'Daejeon' },
+    { name: '울산', lat: 35.5384, lng: 129.3114, english: 'Ulsan' },
+    { name: '세종', lat: 36.4800, lng: 127.2890, english: 'Sejong' },
+    { name: '제주', lat: 33.4996, lng: 126.5312, english: 'Jeju' },
+    { name: '수원', lat: 37.2636, lng: 127.0286, english: 'Suwon' },
+    { name: '창원', lat: 35.2286, lng: 128.6811, english: 'Changwon' },
+    { name: '천안', lat: 36.8151, lng: 127.1139, english: 'Cheonan' },
+    { name: '전주', lat: 35.8242, lng: 127.1480, english: 'Jeonju' },
+    { name: '강릉', lat: 37.7519, lng: 128.8761, english: 'Gangneung' },
+    { name: '포항', lat: 36.0190, lng: 129.3435, english: 'Pohang' }
+];
+
+// ===========================
+// INITIALIZATION
+// ===========================
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+function initializeApp() {
+    // Set default departure date to now
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('departureDate').value = now.toISOString().slice(0, 16);
+
+    // Initialize event listeners
+    initializeEventListeners();
+
+    // Initialize autocomplete
+    initializeAutocomplete();
+
+    // Initialize Google Maps (if API is loaded)
+    if (typeof google !== 'undefined' && google.maps) {
+        initializeMap();
+    } else {
+        console.warn('Google Maps API not loaded. Please add your API key.');
+        // Still allow the app to work without maps
+    }
+}
+
+// ===========================
+// EVENT LISTENERS
+// ===========================
+function initializeEventListeners() {
+    // Form submission
+    document.getElementById('searchForm').addEventListener('submit', handleSearch);
+
+    // Swap button
+    document.getElementById('swapBtn').addEventListener('click', swapLocations);
+
+    // Passenger controls
+    document.getElementById('increasePassengers').addEventListener('click', () => {
+        changePassengers(1);
+    });
+    document.getElementById('decreasePassengers').addEventListener('click', () => {
+        changePassengers(-1);
+    });
+
+    // Sort buttons
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            sortResults(this.dataset.sort);
+        });
+    });
+
+    // Autocomplete inputs
+    document.getElementById('departure').addEventListener('input', (e) => {
+        handleAutocomplete(e.target, 'departureAutocomplete');
+    });
+    document.getElementById('arrival').addEventListener('input', (e) => {
+        handleAutocomplete(e.target, 'arrivalAutocomplete');
+    });
+
+    // Close autocomplete when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.form-group')) {
+            document.querySelectorAll('.autocomplete-dropdown').forEach(dropdown => {
+                dropdown.classList.remove('active');
+            });
+        }
+    });
+}
+
+// ===========================
+// AUTOCOMPLETE
+// ===========================
+function initializeAutocomplete() {
+    // Simple autocomplete for Korean cities
+    autocompleteServices = {
+        cities: koreanCities
+    };
+}
+
+function handleAutocomplete(input, dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    const value = input.value.toLowerCase().trim();
+
+    if (value.length < 1) {
+        dropdown.classList.remove('active');
+        return;
+    }
+
+    const matches = koreanCities.filter(city =>
+        city.name.toLowerCase().includes(value) ||
+        city.english.toLowerCase().includes(value)
+    );
+
+    if (matches.length > 0) {
+        dropdown.innerHTML = matches.map(city =>
+            `<div class="autocomplete-item" data-city="${city.name}">${city.name} (${city.english})</div>`
+        ).join('');
+
+        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+            item.addEventListener('click', () => {
+                input.value = item.dataset.city;
+                dropdown.classList.remove('active');
+            });
+        });
+
+        dropdown.classList.add('active');
+    } else {
+        dropdown.classList.remove('active');
+    }
+}
+
+// ===========================
+// FORM CONTROLS
+// ===========================
+function swapLocations() {
+    const departure = document.getElementById('departure');
+    const arrival = document.getElementById('arrival');
+    const temp = departure.value;
+    departure.value = arrival.value;
+    arrival.value = temp;
+}
+
+function changePassengers(delta) {
+    const input = document.getElementById('passengers');
+    const current = parseInt(input.value);
+    const newValue = Math.max(1, Math.min(9, current + delta));
+    input.value = newValue;
+}
+
+// ===========================
+// GOOGLE MAPS INTEGRATION
+// ===========================
+function initializeMap() {
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
+
+    // Default center (Seoul)
+    const defaultCenter = { lat: 37.5665, lng: 126.9780 };
+
+    map = new google.maps.Map(mapElement, {
+        center: defaultCenter,
+        zoom: 7,
+        styles: [
+            {
+                "featureType": "all",
+                "elementType": "geometry",
+                "stylers": [{ "color": "#f5f5f5" }]
+            },
+            {
+                "featureType": "water",
+                "elementType": "geometry",
+                "stylers": [{ "color": "#c9d6e5" }]
+            },
+            {
+                "featureType": "road",
+                "elementType": "geometry",
+                "stylers": [{ "color": "#ffffff" }]
+            }
+        ]
+    });
+
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: false,
+        polylineOptions: {
+            strokeColor: '#667eea',
+            strokeWeight: 5
+        }
+    });
+}
+
+function displayRoute(origin, destination) {
+    if (!directionsService || !directionsRenderer) {
+        console.warn('Google Maps not initialized');
+        return;
+    }
+
+    const request = {
+        origin: origin,
+        destination: destination,
+        travelMode: google.maps.TravelMode.DRIVING
+    };
+
+    directionsService.route(request, (result, status) => {
+        if (status === 'OK') {
+            directionsRenderer.setDirections(result);
+
+            // Update route info
+            const route = result.routes[0].legs[0];
+            document.getElementById('distance').textContent = route.distance.text;
+            document.getElementById('duration').textContent = route.duration.text;
+        } else {
+            console.error('Directions request failed:', status);
+            // Show fallback info
+            showFallbackRoute(origin, destination);
+        }
+    });
+}
+
+function showFallbackRoute(origin, destination) {
+    // Calculate approximate distance
+    const originCity = koreanCities.find(c => c.name === origin);
+    const destCity = koreanCities.find(c => c.name === destination);
+
+    if (originCity && destCity) {
+        const distance = calculateDistance(
+            originCity.lat, originCity.lng,
+            destCity.lat, destCity.lng
+        );
+        const duration = Math.round(distance / 60 * 60); // Rough estimate
+
+        document.getElementById('distance').textContent = `${distance.toFixed(1)} km`;
+        document.getElementById('duration').textContent = `약 ${duration} 분`;
+
+        // If map exists, show markers
+        if (map) {
+            new google.maps.Marker({
+                position: { lat: originCity.lat, lng: originCity.lng },
+                map: map,
+                label: 'A',
+                title: origin
+            });
+
+            new google.maps.Marker({
+                position: { lat: destCity.lat, lng: destCity.lng },
+                map: map,
+                label: 'B',
+                title: destination
+            });
+
+            // Center map between points
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend({ lat: originCity.lat, lng: originCity.lng });
+            bounds.extend({ lat: destCity.lat, lng: destCity.lng });
+            map.fitBounds(bounds);
+        }
+    }
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    // Haversine formula
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+// ===========================
+// SEARCH HANDLING
+// ===========================
+async function handleSearch(e) {
+    e.preventDefault();
+
+    // Collect form data
+    const formData = {
+        departure: document.getElementById('departure').value,
+        arrival: document.getElementById('arrival').value,
+        departureDate: document.getElementById('departureDate').value,
+        arrivalDate: document.getElementById('arrivalDate').value,
+        passengers: parseInt(document.getElementById('passengers').value),
+        transports: Array.from(document.querySelectorAll('input[name="transport"]:checked'))
+            .map(cb => cb.value)
+    };
+
+    // Validate
+    if (!formData.departure || !formData.arrival) {
+        alert('출발지와 도착지를 입력해주세요.');
+        return;
+    }
+
+    if (formData.transports.length === 0) {
+        alert('최소 하나의 교통수단을 선택해주세요.');
+        return;
+    }
+
+    // Store search data
+    searchData = formData;
+
+    // Show loading
+    showLoading();
+
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Search for transportation
+    const results = await searchTransportation(formData);
+
+    // Display results
+    displayResults(results);
+
+    // Display route on map
+    displayRoute(formData.departure, formData.arrival);
+
+    // Hide loading
+    hideLoading();
+
+    // Scroll to results
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showLoading() {
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+}
+
+function hideLoading() {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('results').classList.remove('hidden');
+}
+
+// ===========================
+// TRANSPORTATION SEARCH
+// ===========================
+async function searchTransportation(formData) {
+    // In a real application, this would call actual APIs
+    // For demo purposes, we'll generate realistic mock data
+
+    const results = [];
+    const { departure, arrival, departureDate, passengers, transports } = formData;
+
+    // Parse departure date
+    const depDate = new Date(departureDate);
+    const timeStr = depDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+    // Calculate base distance for pricing
+    const originCity = koreanCities.find(c => c.name === departure);
+    const destCity = koreanCities.find(c => c.name === arrival);
+    let distance = 300; // default
+
+    if (originCity && destCity) {
+        distance = calculateDistance(
+            originCity.lat, originCity.lng,
+            destCity.lat, destCity.lng
+        );
+    }
+
+    // Generate bus options
+    if (transports.includes('bus')) {
+        results.push(...generateBusOptions(departure, arrival, timeStr, distance, passengers));
+    }
+
+    // Generate train options
+    if (transports.includes('train')) {
+        results.push(...generateTrainOptions(departure, arrival, timeStr, distance, passengers));
+    }
+
+    // Generate flight options
+    if (transports.includes('flight')) {
+        results.push(...generateFlightOptions(departure, arrival, timeStr, distance, passengers));
+    }
+
+    // Mark the best option
+    if (results.length > 0) {
+        results[0].isBest = true;
+    }
+
+    return results;
+}
+
+function generateBusOptions(departure, arrival, time, distance, passengers) {
+    const basePrice = Math.round(distance * 0.08) * 1000;
+    const baseDuration = Math.round(distance / 60 * 60);
+
+    return [
+        {
+            type: 'bus',
+            name: '프리미엄 고속버스',
+            company: '중앙고속',
+            departureTime: time,
+            arrivalTime: addMinutes(time, baseDuration),
+            duration: `${Math.floor(baseDuration / 60)}시간 ${baseDuration % 60}분`,
+            price: basePrice * passengers,
+            pricePerPerson: basePrice,
+            rating: 4.5,
+            seats: 28,
+            amenities: ['WiFi', 'USB 충전', '안마 의자'],
+            bookingUrl: `https://www.kobus.co.kr/`
+        },
+        {
+            type: 'bus',
+            name: '일반 고속버스',
+            company: '동부고속',
+            departureTime: addMinutes(time, 30),
+            arrivalTime: addMinutes(time, baseDuration + 30 + 15),
+            duration: `${Math.floor((baseDuration + 15) / 60)}시간 ${(baseDuration + 15) % 60}분`,
+            price: Math.round(basePrice * 0.8) * passengers,
+            pricePerPerson: Math.round(basePrice * 0.8),
+            rating: 4.2,
+            seats: 42,
+            amenities: ['WiFi'],
+            bookingUrl: `https://www.kobus.co.kr/`
+        }
+    ];
+}
+
+function generateTrainOptions(departure, arrival, time, distance, passengers) {
+    const basePrice = Math.round(distance * 0.15) * 1000;
+    const baseDuration = Math.round(distance / 200 * 60);
+
+    return [
+        {
+            type: 'train',
+            name: 'KTX',
+            company: '코레일',
+            departureTime: time,
+            arrivalTime: addMinutes(time, baseDuration),
+            duration: `${Math.floor(baseDuration / 60)}시간 ${baseDuration % 60}분`,
+            price: basePrice * passengers,
+            pricePerPerson: basePrice,
+            rating: 4.8,
+            seats: 18,
+            amenities: ['WiFi', '식당칸', '콘센트'],
+            bookingUrl: `https://www.letskorail.com/`
+        },
+        {
+            type: 'train',
+            name: 'ITX-새마을',
+            company: '코레일',
+            departureTime: addMinutes(time, 45),
+            arrivalTime: addMinutes(time, 45 + Math.round(baseDuration * 1.3)),
+            duration: `${Math.floor(baseDuration * 1.3 / 60)}시간 ${Math.round(baseDuration * 1.3) % 60}분`,
+            price: Math.round(basePrice * 0.7) * passengers,
+            pricePerPerson: Math.round(basePrice * 0.7),
+            rating: 4.5,
+            seats: 32,
+            amenities: ['WiFi', '콘센트'],
+            bookingUrl: `https://www.letskorail.com/`
+        }
+    ];
+}
+
+function generateFlightOptions(departure, arrival, time, distance, passengers) {
+    // Flights only make sense for longer distances
+    if (distance < 200) {
+        return [];
+    }
+
+    const basePrice = Math.round(distance * 0.25) * 1000;
+    const baseDuration = 65; // Average flight duration
+
+    return [
+        {
+            type: 'flight',
+            name: '대한항공 KE1234',
+            company: '대한항공',
+            departureTime: time,
+            arrivalTime: addMinutes(time, baseDuration),
+            duration: `${Math.floor(baseDuration / 60)}시간 ${baseDuration % 60}분`,
+            price: basePrice * passengers,
+            pricePerPerson: basePrice,
+            rating: 4.7,
+            seats: 12,
+            amenities: ['기내식', 'WiFi', '수하물 20kg'],
+            bookingUrl: `https://www.koreanair.com/`
+        },
+        {
+            type: 'flight',
+            name: '아시아나 OZ5678',
+            company: '아시아나항공',
+            departureTime: addMinutes(time, 60),
+            arrivalTime: addMinutes(time, 60 + baseDuration),
+            duration: `${Math.floor(baseDuration / 60)}시간 ${baseDuration % 60}분`,
+            price: Math.round(basePrice * 0.9) * passengers,
+            pricePerPerson: Math.round(basePrice * 0.9),
+            rating: 4.6,
+            seats: 8,
+            amenities: ['기내식', '수하물 15kg'],
+            bookingUrl: `https://flyasiana.com/`
+        },
+        {
+            type: 'flight',
+            name: '제주항공 7C9012',
+            company: '제주항공',
+            departureTime: addMinutes(time, 120),
+            arrivalTime: addMinutes(time, 120 + baseDuration + 10),
+            duration: `${Math.floor((baseDuration + 10) / 60)}시간 ${(baseDuration + 10) % 60}분`,
+            price: Math.round(basePrice * 0.6) * passengers,
+            pricePerPerson: Math.round(basePrice * 0.6),
+            rating: 4.3,
+            seats: 15,
+            amenities: ['수하물 15kg'],
+            bookingUrl: `https://www.jejuair.net/`
+        }
+    ];
+}
+
+function addMinutes(timeStr, minutes) {
+    // Parse HH:MM format
+    const [hours, mins] = timeStr.split(':').map(Number);
+    const totalMinutes = hours * 60 + mins + minutes;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMins = totalMinutes % 60;
+    return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}`;
+}
+
+// ===========================
+// DISPLAY RESULTS
+// ===========================
+function displayResults(results) {
+    displayTransportOptions(results);
+    displayRecommendations(results);
+}
+
+function displayTransportOptions(results) {
+    const container = document.getElementById('transportOptions');
+
+    if (results.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 3rem; color: #6b7280;">
+                <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                <p style="font-size: 1.1rem;">선택하신 조건에 맞는 교통편이 없습니다.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = results.map(option => {
+        const typeIcon = {
+            'bus': 'fa-bus',
+            'train': 'fa-train',
+            'flight': 'fa-plane'
+        }[option.type];
+
+        return `
+            <div class="transport-card ${option.type} ${option.isBest ? 'best' : ''}" data-price="${option.price}" data-duration="${option.duration}" data-rating="${option.rating}">
+                ${option.isBest ? '<div class="best-badge"><i class="fas fa-crown"></i> 최고 추천</div>' : ''}
+
+                <div class="transport-icon">
+                    <i class="fas ${typeIcon}"></i>
+                </div>
+
+                <div class="transport-details">
+                    <div class="transport-name">${option.name}</div>
+                    <div class="transport-time">
+                        <span><strong>${option.departureTime}</strong></span>
+                        <i class="fas fa-arrow-right"></i>
+                        <span><strong>${option.arrivalTime}</strong></span>
+                        <span class="transport-duration">
+                            <i class="fas fa-clock"></i>
+                            ${option.duration}
+                        </span>
+                    </div>
+                    <div class="transport-meta">
+                        <span class="meta-item">
+                            <i class="fas fa-building"></i>
+                            ${option.company}
+                        </span>
+                        <span class="meta-item rating">
+                            <i class="fas fa-star"></i>
+                            ${option.rating}
+                        </span>
+                        <span class="meta-item">
+                            <i class="fas fa-chair"></i>
+                            ${option.seats}석
+                        </span>
+                    </div>
+                    <div class="transport-meta" style="margin-top: 0.5rem;">
+                        ${option.amenities.map(amenity => `
+                            <span class="meta-item" style="background: #f3f4f6; padding: 0.2rem 0.6rem; border-radius: 6px;">
+                                <i class="fas fa-check" style="color: #10b981;"></i>
+                                ${amenity}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="transport-booking">
+                    <div class="transport-price">
+                        ${formatPrice(option.price)}
+                        <small>/ ${searchData.passengers}인</small>
+                    </div>
+                    <a href="${option.bookingUrl}" target="_blank" class="btn-book" rel="noopener noreferrer">
+                        예약하기
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function displayRecommendations(results) {
+    const container = document.getElementById('recommendations');
+
+    if (results.length === 0) {
+        container.innerHTML = '<p>추천 정보를 생성할 수 없습니다.</p>';
+        return;
+    }
+
+    // Find cheapest and fastest
+    const cheapest = results.reduce((min, option) =>
+        option.price < min.price ? option : min
+    );
+
+    const fastest = results.reduce((min, option) => {
+        const minDur = parseDuration(min.duration);
+        const optDur = parseDuration(option.duration);
+        return optDur < minDur ? option : min;
+    });
+
+    const recommendations = [
+        {
+            icon: 'fa-piggy-bank',
+            title: '가장 저렴한 옵션',
+            content: `${cheapest.name}을(를) 선택하시면 ${formatPrice(cheapest.price)}으로 여행하실 수 있습니다. 총 ${cheapest.duration} 소요됩니다.`
+        },
+        {
+            icon: 'fa-bolt',
+            title: '가장 빠른 옵션',
+            content: `${fastest.name}이(가) ${fastest.duration}으로 가장 빠릅니다. 가격은 ${formatPrice(fastest.price)}입니다.`
+        },
+        {
+            icon: 'fa-star',
+            title: '평점 최고',
+            content: `사용자들이 가장 선호하는 교통편은 ${results[0].name}으로, 평점 ${results[0].rating}점을 받았습니다.`
+        },
+        {
+            icon: 'fa-lightbulb',
+            title: '여행 팁',
+            content: `${searchData.departure}에서 ${searchData.arrival}까지는 평균적으로 ${results[0].duration} 정도 소요됩니다. 출발 30분 전에는 도착하시는 것을 권장합니다.`
+        }
+    ];
+
+    container.innerHTML = recommendations.map(rec => `
+        <div class="recommendation-item">
+            <h4><i class="fas ${rec.icon}" style="color: var(--primary-color); margin-right: 0.5rem;"></i>${rec.title}</h4>
+            <p>${rec.content}</p>
+        </div>
+    `).join('');
+}
+
+// ===========================
+// SORTING
+// ===========================
+function sortResults(sortBy) {
+    const container = document.getElementById('transportOptions');
+    const cards = Array.from(container.querySelectorAll('.transport-card'));
+
+    cards.sort((a, b) => {
+        if (sortBy === 'price') {
+            return parseFloat(a.dataset.price) - parseFloat(b.dataset.price);
+        } else if (sortBy === 'time') {
+            return parseDuration(a.dataset.duration) - parseDuration(b.dataset.duration);
+        } else if (sortBy === 'rating') {
+            return parseFloat(b.dataset.rating) - parseFloat(a.dataset.rating);
+        }
+        return 0;
+    });
+
+    // Clear and re-append
+    container.innerHTML = '';
+    cards.forEach(card => container.appendChild(card));
+}
+
+// ===========================
+// UTILITY FUNCTIONS
+// ===========================
+function formatPrice(price) {
+    return `₩${price.toLocaleString('ko-KR')}`;
+}
+
+function parseDuration(duration) {
+    // Parse "X시간 Y분" format to total minutes
+    const matches = duration.match(/(\d+)시간\s*(\d+)분/);
+    if (matches) {
+        return parseInt(matches[1]) * 60 + parseInt(matches[2]);
+    }
+    const hourMatch = duration.match(/(\d+)시간/);
+    if (hourMatch) {
+        return parseInt(hourMatch[1]) * 60;
+    }
+    const minMatch = duration.match(/(\d+)분/);
+    if (minMatch) {
+        return parseInt(minMatch[1]);
+    }
+    return 0;
+}
+
+// ===========================
+// SMOOTH ANIMATIONS
+// ===========================
+// Add intersection observer for animations
+const observerOptions = {
+    threshold: 0.1,
+    rootMargin: '0px 0px -50px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.style.opacity = '1';
+            entry.target.style.transform = 'translateY(0)';
+        }
+    });
+}, observerOptions);
+
+// Observe cards when they're created
+function observeCards() {
+    document.querySelectorAll('.transport-card, .recommendation-item').forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+}
+
+// Call after results are displayed
+setTimeout(observeCards, 100);

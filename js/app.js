@@ -5,8 +5,8 @@
 
 // Global Variables
 let map;
-let directionsService;
-let directionsRenderer;
+let routeLayer;
+let markersLayer;
 let searchData = {};
 let autocompleteServices = {};
 
@@ -48,12 +48,11 @@ function initializeApp() {
     // Initialize autocomplete
     initializeAutocomplete();
 
-    // Initialize Google Maps (if API is loaded)
-    if (typeof google !== 'undefined' && google.maps) {
+    // Initialize Leaflet Map (No API key required!)
+    if (typeof L !== 'undefined') {
         initializeMap();
     } else {
-        console.warn('Google Maps API not loaded. Please add your API key.');
-        // Still allow the app to work without maps
+        console.warn('Leaflet not loaded.');
     }
 }
 
@@ -163,115 +162,112 @@ function changePassengers(delta) {
 }
 
 // ===========================
-// GOOGLE MAPS INTEGRATION
+// LEAFLET MAP INTEGRATION (No API Key!)
 // ===========================
 function initializeMap() {
     const mapElement = document.getElementById('map');
     if (!mapElement) return;
 
     // Default center (Seoul)
-    const defaultCenter = { lat: 37.5665, lng: 126.9780 };
+    const defaultCenter = [37.5665, 126.9780];
 
-    map = new google.maps.Map(mapElement, {
-        center: defaultCenter,
-        zoom: 7,
-        styles: [
-            {
-                "featureType": "all",
-                "elementType": "geometry",
-                "stylers": [{ "color": "#f5f5f5" }]
-            },
-            {
-                "featureType": "water",
-                "elementType": "geometry",
-                "stylers": [{ "color": "#c9d6e5" }]
-            },
-            {
-                "featureType": "road",
-                "elementType": "geometry",
-                "stylers": [{ "color": "#ffffff" }]
-            }
-        ]
-    });
+    // Initialize Leaflet map
+    map = L.map('map').setView(defaultCenter, 7);
 
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: false,
-        polylineOptions: {
-            strokeColor: '#667eea',
-            strokeWeight: 5
-        }
-    });
+    // Add OpenStreetMap tiles (completely free!)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Initialize layer groups for markers and routes
+    markersLayer = L.layerGroup().addTo(map);
+    routeLayer = L.layerGroup().addTo(map);
 }
 
 function displayRoute(origin, destination) {
-    if (!directionsService || !directionsRenderer) {
-        console.warn('Google Maps not initialized');
+    if (!map) {
+        console.warn('Map not initialized');
         return;
     }
 
-    const request = {
-        origin: origin,
-        destination: destination,
-        travelMode: google.maps.TravelMode.DRIVING
-    };
-
-    directionsService.route(request, (result, status) => {
-        if (status === 'OK') {
-            directionsRenderer.setDirections(result);
-
-            // Update route info
-            const route = result.routes[0].legs[0];
-            document.getElementById('distance').textContent = route.distance.text;
-            document.getElementById('duration').textContent = route.duration.text;
-        } else {
-            console.error('Directions request failed:', status);
-            // Show fallback info
-            showFallbackRoute(origin, destination);
-        }
-    });
-}
-
-function showFallbackRoute(origin, destination) {
-    // Calculate approximate distance
+    // Get city coordinates
     const originCity = koreanCities.find(c => c.name === origin);
     const destCity = koreanCities.find(c => c.name === destination);
 
-    if (originCity && destCity) {
-        const distance = calculateDistance(
-            originCity.lat, originCity.lng,
-            destCity.lat, destCity.lng
-        );
-        const duration = Math.round(distance / 60 * 60); // Rough estimate
-
-        document.getElementById('distance').textContent = `${distance.toFixed(1)} km`;
-        document.getElementById('duration').textContent = `약 ${duration} 분`;
-
-        // If map exists, show markers
-        if (map) {
-            new google.maps.Marker({
-                position: { lat: originCity.lat, lng: originCity.lng },
-                map: map,
-                label: 'A',
-                title: origin
-            });
-
-            new google.maps.Marker({
-                position: { lat: destCity.lat, lng: destCity.lng },
-                map: map,
-                label: 'B',
-                title: destination
-            });
-
-            // Center map between points
-            const bounds = new google.maps.LatLngBounds();
-            bounds.extend({ lat: originCity.lat, lng: originCity.lng });
-            bounds.extend({ lat: destCity.lat, lng: destCity.lng });
-            map.fitBounds(bounds);
-        }
+    if (!originCity || !destCity) {
+        console.error('City not found');
+        return;
     }
+
+    // Clear previous markers and routes
+    markersLayer.clearLayers();
+    routeLayer.clearLayers();
+
+    // Create custom icons
+    const originIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background: #667eea; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">A</div>',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+    });
+
+    const destIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background: #f59e0b; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">B</div>',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+    });
+
+    // Add markers
+    const originMarker = L.marker([originCity.lat, originCity.lng], { icon: originIcon })
+        .bindPopup(`<b>${origin}</b><br>출발지`)
+        .addTo(markersLayer);
+
+    const destMarker = L.marker([destCity.lat, destCity.lng], { icon: destIcon })
+        .bindPopup(`<b>${destination}</b><br>도착지`)
+        .addTo(markersLayer);
+
+    // Draw route line
+    const routeLine = L.polyline([
+        [originCity.lat, originCity.lng],
+        [destCity.lat, destCity.lng]
+    ], {
+        color: '#667eea',
+        weight: 5,
+        opacity: 0.7,
+        smoothFactor: 1
+    }).addTo(routeLayer);
+
+    // Add arrow decorator to show direction
+    const arrowIcon = L.divIcon({
+        className: 'arrow-icon',
+        html: '<div style="color: #667eea; font-size: 20px;">➜</div>',
+        iconSize: [20, 20]
+    });
+
+    const midLat = (originCity.lat + destCity.lat) / 2;
+    const midLng = (originCity.lng + destCity.lng) / 2;
+    L.marker([midLat, midLng], { icon: arrowIcon }).addTo(routeLayer);
+
+    // Fit map to show both markers
+    const bounds = L.latLngBounds([
+        [originCity.lat, originCity.lng],
+        [destCity.lat, destCity.lng]
+    ]);
+    map.fitBounds(bounds, { padding: [50, 50] });
+
+    // Calculate and display distance and duration
+    const distance = calculateDistance(
+        originCity.lat, originCity.lng,
+        destCity.lat, destCity.lng
+    );
+    const duration = Math.round(distance / 60 * 60); // Rough estimate: 60km/h average
+
+    document.getElementById('distance').textContent = `${distance.toFixed(1)} km`;
+    document.getElementById('duration').textContent = `약 ${Math.floor(duration / 60)}시간 ${duration % 60}분`;
 }
+
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     // Haversine formula

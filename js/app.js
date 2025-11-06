@@ -47,9 +47,6 @@ function initializeApp() {
     // Initialize event listeners
     initializeEventListeners();
 
-    // Initialize autocomplete
-    initializeAutocomplete();
-
     // Initialize Leaflet Map (No API key required!)
     if (typeof L !== 'undefined') {
         initializeMap();
@@ -84,65 +81,6 @@ function initializeEventListeners() {
             sortResults(this.dataset.sort);
         });
     });
-
-    // Autocomplete inputs
-    document.getElementById('departure').addEventListener('input', (e) => {
-        handleAutocomplete(e.target, 'departureAutocomplete');
-    });
-    document.getElementById('arrival').addEventListener('input', (e) => {
-        handleAutocomplete(e.target, 'arrivalAutocomplete');
-    });
-
-    // Close autocomplete when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.form-group')) {
-            document.querySelectorAll('.autocomplete-dropdown').forEach(dropdown => {
-                dropdown.classList.remove('active');
-            });
-        }
-    });
-}
-
-// ===========================
-// AUTOCOMPLETE
-// ===========================
-function initializeAutocomplete() {
-    // Simple autocomplete for Korean cities
-    autocompleteServices = {
-        cities: koreanCities
-    };
-}
-
-function handleAutocomplete(input, dropdownId) {
-    const dropdown = document.getElementById(dropdownId);
-    const value = input.value.toLowerCase().trim();
-
-    if (value.length < 1) {
-        dropdown.classList.remove('active');
-        return;
-    }
-
-    const matches = koreanCities.filter(city =>
-        city.name.toLowerCase().includes(value) ||
-        city.english.toLowerCase().includes(value)
-    );
-
-    if (matches.length > 0) {
-        dropdown.innerHTML = matches.map(city =>
-            `<div class="autocomplete-item" data-city="${city.name}">${city.name} (${city.english})</div>`
-        ).join('');
-
-        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-            item.addEventListener('click', () => {
-                input.value = item.dataset.city;
-                dropdown.classList.remove('active');
-            });
-        });
-
-        dropdown.classList.add('active');
-    } else {
-        dropdown.classList.remove('active');
-    }
 }
 
 // ===========================

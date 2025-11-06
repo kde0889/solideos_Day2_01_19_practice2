@@ -513,9 +513,19 @@ function displayTransportOptions(results) {
 
     if (results.length === 0) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 3rem; color: #6b7280;">
-                <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem;"></i>
-                <p style="font-size: 1.1rem;">선택하신 조건에 맞는 교통편이 없습니다.</p>
+            <div class="no-routes-message">
+                <i class="fas fa-route"></i>
+                <h3>${searchData.departure} → ${searchData.arrival}</h3>
+                <p class="no-routes-title">이용 가능한 교통편이 없습니다</p>
+                <p class="no-routes-desc">선택하신 구간과 교통수단으로는 운행하는 노선이 없습니다.</p>
+                <div class="no-routes-suggestions">
+                    <p><strong>다음을 확인해보세요:</strong></p>
+                    <ul>
+                        <li>다른 교통수단을 선택해보세요 (버스, 기차, 비행기)</li>
+                        <li>출발 시간을 변경해보세요</li>
+                        <li>경유 구간을 검색해보세요</li>
+                    </ul>
+                </div>
             </div>
         `;
         return;
@@ -538,6 +548,12 @@ function displayTransportOptions(results) {
 
                 <div class="transport-details">
                     <div class="transport-name">${option.name}</div>
+                    <div class="transport-route">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span class="route-text">${searchData.departure}</span>
+                        <i class="fas fa-arrow-right"></i>
+                        <span class="route-text">${searchData.arrival}</span>
+                    </div>
                     <div class="transport-time">
                         <span><strong>${option.departureTime}</strong></span>
                         <i class="fas fa-arrow-right"></i>

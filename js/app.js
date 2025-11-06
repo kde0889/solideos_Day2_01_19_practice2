@@ -228,66 +228,78 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 async function handleSearch(e) {
     e.preventDefault();
 
-    // Collect form data
-    const date = document.getElementById('departureDate').value;
-    const hour = parseInt(document.getElementById('departureHour').value);
-    const minute = parseInt(document.getElementById('departureMinute').value);
-    const period = document.getElementById('departurePeriod').value;
+    try {
+        // Collect form data
+        const date = document.getElementById('departureDate').value;
+        const hour = parseInt(document.getElementById('departureHour').value);
+        const minute = parseInt(document.getElementById('departureMinute').value);
+        const period = document.getElementById('departurePeriod').value;
 
-    // Convert 12-hour to 24-hour format
-    let hour24 = hour;
-    if (period === 'PM' && hour !== 12) {
-        hour24 = hour + 12;
-    } else if (period === 'AM' && hour === 12) {
-        hour24 = 0;
+        console.log('Form values:', { date, hour, minute, period });
+
+        // Convert 12-hour to 24-hour format
+        let hour24 = hour;
+        if (period === 'PM' && hour !== 12) {
+            hour24 = hour + 12;
+        } else if (period === 'AM' && hour === 12) {
+            hour24 = 0;
+        }
+
+        // Create datetime string
+        const departureDateTime = `${date}T${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+        const formData = {
+            departure: document.getElementById('departure').value,
+            arrival: document.getElementById('arrival').value,
+            departureDate: departureDateTime,
+            passengers: parseInt(document.getElementById('passengers').value),
+            transports: Array.from(document.querySelectorAll('input[name="transport"]:checked'))
+                .map(cb => cb.value)
+        };
+
+        console.log('Collected form data:', formData);
+
+        // Validate
+        if (!formData.departure || !formData.arrival) {
+            alert('출발지와 도착지를 입력해주세요.');
+            return;
+        }
+
+        if (formData.transports.length === 0) {
+            alert('최소 하나의 교통수단을 선택해주세요.');
+            return;
+        }
+
+        // Store search data
+        searchData = formData;
+
+        // Show loading
+        showLoading();
+
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Search for transportation
+        const results = await searchTransportation(formData);
+        console.log('Search results:', results);
+
+        // Display results
+        displayResults(results);
+
+        // Display route on map
+        displayRoute(formData.departure, formData.arrival);
+
+        // Hide loading
+        hideLoading();
+
+        // Scroll to results
+        document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (error) {
+        console.error('Error in handleSearch:', error);
+        alert('검색 중 오류가 발생했습니다: ' + error.message);
+        hideLoading();
     }
-
-    // Create datetime string
-    const departureDateTime = `${date}T${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-
-    const formData = {
-        departure: document.getElementById('departure').value,
-        arrival: document.getElementById('arrival').value,
-        departureDate: departureDateTime,
-        passengers: parseInt(document.getElementById('passengers').value),
-        transports: Array.from(document.querySelectorAll('input[name="transport"]:checked'))
-            .map(cb => cb.value)
-    };
-
-    // Validate
-    if (!formData.departure || !formData.arrival) {
-        alert('출발지와 도착지를 입력해주세요.');
-        return;
-    }
-
-    if (formData.transports.length === 0) {
-        alert('최소 하나의 교통수단을 선택해주세요.');
-        return;
-    }
-
-    // Store search data
-    searchData = formData;
-
-    // Show loading
-    showLoading();
-
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Search for transportation
-    const results = await searchTransportation(formData);
-
-    // Display results
-    displayResults(results);
-
-    // Display route on map
-    displayRoute(formData.departure, formData.arrival);
-
-    // Hide loading
-    hideLoading();
-
-    // Scroll to results
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function showLoading() {
